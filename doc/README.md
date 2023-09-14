@@ -1,0 +1,5 @@
+# Plugin documentation
+
+## Purpose
+
+TODO
