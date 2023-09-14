@@ -1,0 +1,26 @@
+{
+  "name": "elementor-page-validator-plugin",
+  "version": "0.2.1",
+  "description": "Elementor page validator plugin",
+  "author": "Thomas Couderc",
+  "license": "See license in LICENSE",
+  "keywords": [
+    "WordPress",
+    "Elementor",
+    "plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com:elzinko/elementor-page-validator-plugin.git"
+  },
+  "devDependencies": {
+    "auto-changelog": "^2.4.0",
+    "dir-archiver": "2.1.0"
+  },
+  "scripts": {
+    "changelog": "auto-changelog -p --template keepachangelog auto-changelog --breaking-pattern 'BREAKING CHANGE:'",
+    "tag": "git describe --tags --always",
+    "bundle": "npm run tag | tail -n 1 | xargs -I {} dir-archiver --src . --dest ./dist/$npm_package_name-{}.zip --exclude .DS_Store .git .gitattributes .github .gitignore README.md composer.json composer.lock node_modules vendor package-lock.json package.json .github",
+    "clean": "rm -rf dist && rm -rf node_modules"
+  }
+}
