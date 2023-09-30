@@ -6,17 +6,16 @@
  * Author: Thomas Couderc
  */
 
+
 // Initialize or get SNAPSHOT_URL from WordPress options
 if (!get_option('snapshot_url')) {
-    add_option('snapshot_url', 'https://webshot-elzinko.vercel.app/api/webshot?url=');
+    add_option('snapshot_url', 'https://webshot-elzinko.vercel.app/api/webshot');
 }
-$SNAPSHOT_URL = get_option('snapshot_url');
 
+define ('SNAPSHOT_URL', get_option('snapshot_url'));
 // Automatically detect the website URL
-$WEBSITE_URL = get_site_url();
+define ('WEBSITE_URL', get_site_url());
 
-// Complete SNAPSHOT_URL
-$SNAPSHOT_URL .= urlencode($WEBSITE_URL);
 
 // Add menu and submenu in admin panel
 add_action('admin_menu', 'add_menu_and_submenu_page_validator');
@@ -43,6 +42,7 @@ function find_first_title($elements) {
 }
 
 function show_page_validator_settings() {
+    
     // Handle form submission for settings
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['snapshot_url'])) {
@@ -51,7 +51,7 @@ function show_page_validator_settings() {
     }
 
     // Fetch the snapshot_url from options
-    $snapshot_url = get_option('snapshot_url', 'https://webshot-elzinko.vercel.app/api/webshot?url=');
+    $snapshot_url = get_option('snapshot_url', SNAPSHOT_URL);
 
     echo '<div class="wrap">';
     echo '<h1>Settings</h1>';
@@ -64,6 +64,7 @@ function show_page_validator_settings() {
 }
 
 function show_page_validator_plugin() {
+    
     // Handle form submission
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['valider'])) {
@@ -95,8 +96,11 @@ function show_page_validator_plugin() {
     echo '<thead><tr><th scope="col">ID</th><th scope="col">Valider</th><th scope="col">Fil d\'Ariane</th><th scope="col">Aperçu</th></tr></thead>';
     echo '<tbody>';
 
+    $getSnapshot = true;
+
     if ($query->have_posts()) {
         while ($query->have_posts()) {
+
             $query->the_post();
             $page_id = get_the_ID();
             $titre_page = get_the_title();
@@ -108,9 +112,14 @@ function show_page_validator_plugin() {
             echo '<td>' . $page_id . '</td>';
             echo '<td><input type="checkbox" name="valider[]" value="' . $page_id . '"></td>';
             echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . '</a></td>';
-            echo '<td><img src="https://picsum.photos/200" width="100"></td>';
-            // echo '<td><img src="' . SNAPSHOT_URL .'?url=' . WEBSITE_URL . '&selectorId=' . $page_id . '" width="100"></td>';
+            echo '<td><img src="' . SNAPSHOT_URL .'?url=' . $section_link . '&selectorId=' . $css_id . '" width="100"></td>';
+            if ($getSnapshot) {
+                echo '<td><img src="' . SNAPSHOT_URL .'?url=' . WEBSITE_URL . '&fullpage" width="100"></td>';
+            } else {
+                echo '<td><img src="https://picsum.photos/200" width="100"></td>';
+            }
             echo '</tr>';
+
 
             // Fetch Elementor data
             $raw_elementor_data = get_post_meta($page_id, '_elementor_data', true);
@@ -148,9 +157,12 @@ function show_page_validator_plugin() {
                         } else {
                             echo '<td>' . $titre_page . ' > ' . $section_title . '</td>';
                         }
-                        // echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . ' > ' . $section_title . '</a></td>';
-                        echo '<td><img src="https://picsum.photos/200" width="100"></td>';
-                        // echo '<td><img src="' . SNAPSHOT_URL .'?url=' . WEBSITE_URL . '&selectorId=' . $page_id . '" width="100"></td>';
+                        if ($getSnapshot && $css_id) {
+                            echo '<td><img src="' . SNAPSHOT_URL .'?url=' . $section_link . '&selectorId=' . $css_id . '" width="100"></td>';
+                            $getSnapshot = false;
+                        } else {
+                            echo '<td><img src="https://picsum.photos/200" width="100"></td>';
+                        }
                         echo '</tr>';
                     }
                 }
