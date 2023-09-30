@@ -199,6 +199,34 @@ function build_section_link($page_id, $css_id) {
     
 }
 
+function build_screenshot_link($page_url, $css_id, $fullpage = false) {
+    if ($page_url === false || empty($page_url)) {
+        return null;
+    }
+
+    $screenshot_link = $page_url;
+    
+    $use_auth = get_option('use_auth', 'false');
+    if ($use_auth === 'true') {
+        $username = get_option('snapshot_username', '');
+        $password = get_option('snapshot_password', '');
+        if (!empty($username) && !empty($password)) {
+            $screenshot_link = "https://{$username}:{$password}@" . parse_url($page_url, PHP_URL_HOST) . parse_url($page_url, PHP_URL_PATH);
+        }
+    }
+
+    if ($css_id) {
+        $screenshot_link .= '&selectorId=' . $css_id;
+    }
+
+    if ($fullpage) {
+        $screenshot_link .= '&fullpage';
+    }
+    
+    return $screenshot_link;
+    
+}
+
 
 function show_page_validator_plugin() {
     
@@ -240,6 +268,7 @@ function show_page_validator_plugin() {
 
             $query->the_post();
             $page_id = get_the_ID();
+            $page_url = get_permalink($page_id);
             $titre_page = get_the_title();
             // Create an anchor link to page
             $section_link = build_section_link($page_id, null);
@@ -251,12 +280,12 @@ function show_page_validator_plugin() {
             echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . '</a></td>';
             if (MOCK_SNAPSHOT === 'true') {
                 if ($getSnapshot) {
-                    echo '<td><img src="' . SNAPSHOT_API .'?url=' . WEBSITE_URL . '&fullpage" width="100"></td>';
+                    echo '<td><img src="' . SNAPSHOT_API .'?url=' . build_screenshot_link($page_url, null, true) . '" width="100"></td>';
                 } else {
                     echo '<td><img src="https://picsum.photos/200" width="100"></td>';
                 }
             } else {
-                echo '<td><img src="' . SNAPSHOT_API .'?url=' . WEBSITE_URL . '&fullpage" width="100"></td>';
+                echo '<td><img src="' . SNAPSHOT_API .'?url=' . build_screenshot_link($page_url, null, true) . '" width="100"></td>';
             }
             echo '</tr>';
 
@@ -300,13 +329,13 @@ function show_page_validator_plugin() {
 
                         if (MOCK_SNAPSHOT === 'true') {
                             if ($getSnapshot && $css_id) {
-                                echo '<td><img src="' . SNAPSHOT_API .'?url=' . $section_link . '&selectorId=' . $css_id . '" width="100"></td>';
+                                echo '<td><img src="' . SNAPSHOT_API .'?url=' . build_screenshot_link($page_url, $css_id) . '" width="100"></td>';
                                 $getSnapshot = false;
                             } else {
                                 echo '<td><img src="https://picsum.photos/200" width="100"></td>';
                             }
                         } else {
-                            echo '<td><img src="' . SNAPSHOT_API .'?url=' . $section_link . '&selectorId=' . $css_id . '" width="100"></td>';
+                            echo '<td><img src="' . SNAPSHOT_API .'?url=' . build_screenshot_link($page_url, $css_id) . '" width="100"></td>';
                         }
                         echo '</tr>';
                     }
