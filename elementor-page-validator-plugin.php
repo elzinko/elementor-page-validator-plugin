@@ -7,18 +7,23 @@
  */
 
 
-// Initialize or get SNAPSHOT_URL from WordPress options
-if (!get_option('snapshot_url')) {
-    add_option('snapshot_url', 'https://webshot-elzinko.vercel.app/api/webshot');
+// Initialize or get snapshot_api from WordPress options
+if (!get_option('snapshot_api')) {
+    add_option('snapshot_api', 'https://webshot-elzinko.vercel.app/api/webshot');
 }
+define ('SNAPSHOT_API', get_option('snapshot_api'));
 
-define ('SNAPSHOT_URL', get_option('snapshot_url'));
-// Automatically detect the website URL
 define ('WEBSITE_URL', get_site_url());
-
 
 // Add menu and submenu in admin panel
 add_action('admin_menu', 'add_menu_and_submenu_page_validator');
+
+// define MOCK_SNAPSHOT
+if (!get_option('mock_snapshot')) {
+    add_option('mock_snapshot', 'false');
+}
+define('MOCK_SNAPSHOT', get_option('mock_snapshot'));
+
 
 function add_menu_and_submenu_page_validator() {
     add_menu_page('Page validator', 'Page validator', 'manage_options', 'page_validator', 'show_page_validator_plugin');
@@ -41,27 +46,159 @@ function find_first_title($elements) {
     return null;
 }
 
-function show_page_validator_settings() {
+
+function build_test_link() {
     
-    // Handle form submission for settings
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        if (isset($_POST['snapshot_url'])) {
-            update_option('snapshot_url', sanitize_text_field($_POST['snapshot_url']));
+    $test_link = WEBSITE_URL;
+
+    $use_auth = get_option('use_auth', 'false');
+    if ($use_auth === 'true') {
+        $username = get_option('snapshot_username', '');
+        $password = get_option('snapshot_password', '');
+        if (!empty($username) && !empty($password)) {
+            $test_link = "https://{$username}:{$password}@" . parse_url($test_link, PHP_URL_HOST) . parse_url($test_link, PHP_URL_PATH);
         }
     }
+    return $test_link;
+    
+}
 
-    // Fetch the snapshot_url from options
-    $snapshot_url = get_option('snapshot_url', SNAPSHOT_URL);
+function show_page_validator_settings() {
+    // Handle form submission for settings
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        if (isset($_POST['snapshot_api'])) {
+            update_option('snapshot_api', sanitize_text_field($_POST['snapshot_api']));
+        }
+        if (isset($_POST['use_auth'])) {
+            update_option('use_auth', 'true');
+        } else {
+            update_option('use_auth', 'false');
+        }
+        if (isset($_POST['username'])) {
+            update_option('snapshot_username', sanitize_text_field($_POST['username']));
+        }
+        if (isset($_POST['password'])) {
+            update_option('snapshot_password', sanitize_text_field($_POST['password']));
+        }
+        if (isset($_POST['mock_snapshot'])) {
+            update_option('mock_snapshot', 'true');
+        } else {
+            update_option('mock_snapshot', 'false');
+        }
+        
+    }
+
+    // Fetch the snapshot_api and credentials from options
+    $snapshot_api = get_option('snapshot_api', SNAPSHOT_API);
+    $use_auth = get_option('use_auth', 'false');
+    $username = get_option('snapshot_username', '');
+    $password = get_option('snapshot_password', '');
+    $mock_snapshot = get_option('mock_snapshot', 'false');
 
     echo '<div class="wrap">';
     echo '<h1>Settings</h1>';
     echo '<form method="post">';
-    echo '<label for="snapshot_url">Snapshot URL: </label>';
-    echo '<input type="text" id="snapshot_url" name="snapshot_url" value="' . esc_attr($snapshot_url) . '">';
+    echo '<label for="snapshot_api">Snapshot API : </label>';
+    echo '<input type="text" size="50" id="snapshot_api" name="snapshot_api" value="' . esc_attr($snapshot_api) . '"><br>';
+    echo '<label for="website_url">Website url : </label>';
+    echo '<input type="text" id="website_url" name="website_url" value="' . esc_attr(WEBSITE_URL) . '" size="50" readonly><br>';
+    echo '<br>';
+    echo '<input type="checkbox" id="use_auth" name="use_auth" ' . ($use_auth === 'true' ? 'checked' : '') . '>';
+    echo '<label for="use_auth">Use Authentication</label><br>';
+    echo '<br>';
+    echo '<div id="authFields" style="display:none;">';
+    echo '<label for="username">Username: </label>';
+    echo '<input type="text" id="username" name="username" value="' . esc_attr($username) . '"><br>';
+    echo '<label for="password">Password: </label>';
+    echo '<input type="password" id="password" name="password" value="' . esc_attr($password) . '"><br>';
+    echo '</div>';
+    echo '<br>';
+    echo '<div id="snapshotFields"">';
+    echo '<input type="checkbox" id="mock_snapshot" name="mock_snapshot" ' . ($mock_snapshot === 'true' ? 'checked' : '') . '>';
+    echo '<label for="mock_snapshot">Mock snapshot: </label></>';
+    echo '</div>';
+    echo '<br>';
+    echo '<label id="testLinkLabel">Test Link : ' . build_test_link() . '</label>';
+    echo '<br>';
+    echo '<br>';
     echo '<input type="submit" value="Save">';
     echo '</form>';
     echo '</div>';
+
+    echo '<script>
+jQuery(document).ready(function($) {
+    function toggleAuthFields() {
+        if ($("#use_auth").prop("checked")) {
+            $("#authFields").show();
+        } else {
+            $("#authFields").hide();
+        }
+    }
+
+    // Initial state
+    toggleAuthFields();
+
+    // Toggle on change
+    $("#use_auth").change(function() {
+        toggleAuthFields();
+    });
+
+    function buildTestLink() {
+        var websiteUrl = $("#website_url").val();
+        var useAuth = $("#use_auth").prop("checked");
+        var username = $("#username").val();
+        var password = $("#password").val();
+        // replace each character of password with * character
+        password = password.replace(/./g, "*");
+        
+        if (useAuth && username && password) {
+            var urlParts = websiteUrl.split("://");
+            websiteUrl = urlParts[0] + "://" + username + ":" + password + "@" + urlParts[1];
+        }
+        
+        return websiteUrl;
+    }
+
+    function updateTestLink() {
+        $("#testLinkLabel").text("Test Link : " + buildTestLink());
+    }
+
+    // Initial state
+    updateTestLink();
+
+    // Update on change
+    $("#username, #password, #use_auth").change(function() {
+        updateTestLink();
+    });
+});
+</script>';
+
 }
+
+
+function build_section_link($page_id, $css_id) {
+    
+    $section_link = get_permalink($page_id);
+
+    if ($section_link === false) {
+        return null;
+    }
+
+    $use_auth = get_option('use_auth', 'false');
+    if ($use_auth === 'true') {
+        $username = get_option('snapshot_username', '');
+        $password = get_option('snapshot_password', '');
+        if (!empty($username) && !empty($password)) {
+            $section_link = "https://{$username}:{$password}@" . parse_url($section_link, PHP_URL_HOST) . parse_url($section_link, PHP_URL_PATH);
+        }
+    }
+    if ($css_id) {
+        $section_link .= '#' . $css_id;
+    }
+    return $section_link;
+    
+}
+
 
 function show_page_validator_plugin() {
     
@@ -105,18 +242,21 @@ function show_page_validator_plugin() {
             $page_id = get_the_ID();
             $titre_page = get_the_title();
             // Create an anchor link to page
-            $section_link = get_permalink($page_id);
+            $section_link = build_section_link($page_id, null);
 
             // Display row for the page
             echo '<tr data-id="' . $page_id . '">';
             echo '<td>' . $page_id . '</td>';
             echo '<td><input type="checkbox" name="valider[]" value="' . $page_id . '"></td>';
             echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . '</a></td>';
-            echo '<td><img src="' . SNAPSHOT_URL .'?url=' . $section_link . '&selectorId=' . $css_id . '" width="100"></td>';
-            if ($getSnapshot) {
-                echo '<td><img src="' . SNAPSHOT_URL .'?url=' . WEBSITE_URL . '&fullpage" width="100"></td>';
+            if (MOCK_SNAPSHOT === 'true') {
+                if ($getSnapshot) {
+                    echo '<td><img src="' . SNAPSHOT_API .'?url=' . WEBSITE_URL . '&fullpage" width="100"></td>';
+                } else {
+                    echo '<td><img src="https://picsum.photos/200" width="100"></td>';
+                }
             } else {
-                echo '<td><img src="https://picsum.photos/200" width="100"></td>';
+                echo '<td><img src="' . SNAPSHOT_API .'?url=' . WEBSITE_URL . '&fullpage" width="100"></td>';
             }
             echo '</tr>';
 
@@ -135,7 +275,7 @@ function show_page_validator_plugin() {
                         
                         // Create an anchor link to the section
                         if ($css_id) {
-                            $section_link = get_permalink($page_id) . '#' . $css_id;
+                            $section_link = build_section_link($page_id, $css_id);
                         }
 
                         // Check if the section contains elements
@@ -157,11 +297,16 @@ function show_page_validator_plugin() {
                         } else {
                             echo '<td>' . $titre_page . ' > ' . $section_title . '</td>';
                         }
-                        if ($getSnapshot && $css_id) {
-                            echo '<td><img src="' . SNAPSHOT_URL .'?url=' . $section_link . '&selectorId=' . $css_id . '" width="100"></td>';
-                            $getSnapshot = false;
+
+                        if (MOCK_SNAPSHOT === 'true') {
+                            if ($getSnapshot && $css_id) {
+                                echo '<td><img src="' . SNAPSHOT_API .'?url=' . $section_link . '&selectorId=' . $css_id . '" width="100"></td>';
+                                $getSnapshot = false;
+                            } else {
+                                echo '<td><img src="https://picsum.photos/200" width="100"></td>';
+                            }
                         } else {
-                            echo '<td><img src="https://picsum.photos/200" width="100"></td>';
+                            echo '<td><img src="' . SNAPSHOT_API .'?url=' . $section_link . '&selectorId=' . $css_id . '" width="100"></td>';
                         }
                         echo '</tr>';
                     }
