@@ -6,14 +6,24 @@
  * Author: Thomas Couderc
  */
 
-define('WEBSITE_URL', 'https://yearbook:receptive@roomy-company.localsite.io');
-define('SNAPSHOT_URL', 'https://webshot-elzinko.vercel.app/api/webshot?url='. WEBSITE_URL);
+// Initialize or get SNAPSHOT_URL from WordPress options
+if (!get_option('snapshot_url')) {
+    add_option('snapshot_url', 'https://webshot-elzinko.vercel.app/api/webshot?url=');
+}
+$SNAPSHOT_URL = get_option('snapshot_url');
 
-// Add menu in admin panel
-add_action('admin_menu', 'add_menu_page_validator');
+// Automatically detect the website URL
+$WEBSITE_URL = get_site_url();
 
-function add_menu_page_validator() {
+// Complete SNAPSHOT_URL
+$SNAPSHOT_URL .= urlencode($WEBSITE_URL);
+
+// Add menu and submenu in admin panel
+add_action('admin_menu', 'add_menu_and_submenu_page_validator');
+
+function add_menu_and_submenu_page_validator() {
     add_menu_page('Page validator', 'Page validator', 'manage_options', 'page_validator', 'show_page_validator_plugin');
+    add_submenu_page('page_validator', 'Settings', 'Settings', 'manage_options', 'page_validator_settings', 'show_page_validator_settings');
 }
 
 function find_first_title($elements) {
@@ -32,6 +42,27 @@ function find_first_title($elements) {
     return null;
 }
 
+function show_page_validator_settings() {
+    // Handle form submission for settings
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        if (isset($_POST['snapshot_url'])) {
+            update_option('snapshot_url', sanitize_text_field($_POST['snapshot_url']));
+        }
+    }
+
+    // Fetch the snapshot_url from options
+    $snapshot_url = get_option('snapshot_url', 'https://webshot-elzinko.vercel.app/api/webshot?url=');
+
+    echo '<div class="wrap">';
+    echo '<h1>Settings</h1>';
+    echo '<form method="post">';
+    echo '<label for="snapshot_url">Snapshot URL: </label>';
+    echo '<input type="text" id="snapshot_url" name="snapshot_url" value="' . esc_attr($snapshot_url) . '">';
+    echo '<input type="submit" value="Save">';
+    echo '</form>';
+    echo '</div>';
+}
+
 function show_page_validator_plugin() {
     // Handle form submission
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -48,10 +79,12 @@ function show_page_validator_plugin() {
         }
     }
 
-    // Fetch all pages
+    // Fetch all Elementor-edited pages
     $args = array(
         'post_type' => 'page',
         'posts_per_page' => -1,
+        'meta_key' => '_elementor_edit_mode',
+        'meta_value' => 'builder'
     );
     $query = new WP_Query($args);
 
@@ -67,13 +100,16 @@ function show_page_validator_plugin() {
             $query->the_post();
             $page_id = get_the_ID();
             $titre_page = get_the_title();
+            // Create an anchor link to page
+            $section_link = get_permalink($page_id);
 
             // Display row for the page
             echo '<tr data-id="' . $page_id . '">';
             echo '<td>' . $page_id . '</td>';
             echo '<td><input type="checkbox" name="valider[]" value="' . $page_id . '"></td>';
-            echo '<td>' . $titre_page . '</td>';
-            echo '<td><img src="' . SNAPSHOT_URL . '&selectorId=' . $page_id . '" width="100"></td>';
+            echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . '</a></td>';
+            echo '<td><img src="https://picsum.photos/200" width="100"></td>';
+            // echo '<td><img src="' . SNAPSHOT_URL .'?url=' . WEBSITE_URL . '&selectorId=' . $page_id . '" width="100"></td>';
             echo '</tr>';
 
             // Fetch Elementor data
@@ -84,33 +120,41 @@ function show_page_validator_plugin() {
             if (is_array($elementor_data)) {
                 foreach ($elementor_data as $element) {
                     if (isset($element['elType']) && 'section' === $element['elType']) {
-                        $section_title = 'Section sans titre';  // Default title
+                        $section_title = 'Section sans titre';
+                        // get css id of element
+                        $css_id = isset($element['settings']['_element_id']) ? $element['settings']['_element_id'] : null;  
+                        
+                        // Create an anchor link to the section
+                        if ($css_id) {
+                            $section_link = get_permalink($page_id) . '#' . $css_id;
+                        }
 
                         // Check if the section contains elements
-                        if (isset($element['elements']) && is_array($element['elements'])) {
+                         if (isset($element['elements']) && is_array($element['elements'])) {
                             $title = find_first_title($element['elements']);
                             if ($title) {
                                 $section_title = $title;
                             }
                         }
 
+                        $css_name = $css_id? $css_id : 'x';
+
                         // Display row for the section
                         echo '<tr data-id="' . $page_id . '-' . $element['id'] . '">';
-                        echo '<td>' . $element['id'] . '</td>';
+                        echo '<td>' . $css_name . '</td>';
                         echo '<td><input type="checkbox" name="valider_section[]" value="' . $element['id'] . '"></td>';
-                        echo '<td>' . $titre_page . ' > ' . $section_title . '</td>';
-                        echo '<td><img src="' . SNAPSHOT_URL  . '&selectorId=' . $element['id'] . '" width="100"></td>';
+                        if ($css_id) {
+                            echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . ' > ' . $section_title . '</a></td>';
+                        } else {
+                            echo '<td>' . $titre_page . ' > ' . $section_title . '</td>';
+                        }
+                        // echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . ' > ' . $section_title . '</a></td>';
+                        echo '<td><img src="https://picsum.photos/200" width="100"></td>';
+                        // echo '<td><img src="' . SNAPSHOT_URL .'?url=' . WEBSITE_URL . '&selectorId=' . $page_id . '" width="100"></td>';
                         echo '</tr>';
                     }
                 }
             }
-
-            // Display row for the section
-            echo '<tr data-id="' . $page_id . '-' . $element['id'] . '">';
-            echo '<td>' . $element['id'] . '</td>';
-            echo '<td><input type="checkbox" name="valider_section[]" value="' . $element['id'] . '"></td>';
-            echo '<td>' . $titre_page . ' > ' . $section_title . '</td>';
-            echo '</tr>';
         }
     }
 
