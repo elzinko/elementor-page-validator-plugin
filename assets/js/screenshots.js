@@ -6,19 +6,32 @@ jQuery(document).ready(function($) {
         $("tr[data-id^=\'" + parentId + "-\']").find("input[type=\'checkbox\']").prop("checked", parentChecked);
     });
 });
-jQuery(document).ready(function($) {
-    $("img[id^=\'screenshot-\']").each(function() {
-        var screenshotUrl = $(this).data("url");
-        var imgElement = $(this);
-        $.ajax({
-            url: screenshotUrl,
-            type: "GET",
-            success: function(data) {
-                imgElement.attr("src", data.URL);
-            },
-            error: function(error) {
-                console.log("Erreur lors de la récupération de l\'image : ", error);
-            }
+
+document.addEventListener("DOMContentLoaded", function() {
+    const images = document.querySelectorAll("img[data-url]");
+    images.forEach(img => {
+        const dataUrl = img.getAttribute("data-url");
+        fetch('/wp-json/epvp/v1/request-image/', {
+            method: 'POST',
+            body: JSON.stringify({ data_url: dataUrl }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            const taskId = data.task_id;
+            checkImageStatus(taskId, img);
         });
     });
 });
+
+function checkImageStatus(taskId, imgElement) {
+    fetch(`/wp-json/epvp/v1/check-image/${taskId}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'completed') {
+            imgElement.src = data.image_url;
+        } else {
+            setTimeout(() => checkImageStatus(taskId, imgElement), 5000);
+        }
+    });
+}
+

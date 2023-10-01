@@ -31,7 +31,7 @@ error_log("MOCK_SNAPSHOT MODE : " . var_export(MOCK_SNAPSHOT, true));  // Utilis
 
 // default screenshot url
 if (!get_option('default_screenshot_url')) {
-    add_option('default_screenshot_url', 'https://placehold.co/400');
+    update_option('default_screenshot_url', 'https://placehold.co/400/png');
 }
 define('DEFAULT_SCREENSHOT_URL',  get_option('default_screenshot_url'));
 error_log("DEFAULT_SCREENSHOT_URL : " . DEFAULT_SCREENSHOT_URL);
@@ -51,6 +51,7 @@ add_action('admin_menu', 'add_menu_and_submenu_page_validator');
 function enqueue_screenshots_script() {
     wp_enqueue_script('screenshots', plugin_dir_url(__FILE__) . 'assets/js/screenshots.js', array('jquery'), '1.0', true);
 }
+
 add_action('admin_enqueue_scripts', 'enqueue_screenshots_script');
 
 
@@ -58,6 +59,98 @@ function add_menu_and_submenu_page_validator() {
     add_menu_page('Page validator', 'Page validator', 'manage_options', 'page_validator', 'show_page_validator_plugin');
     add_submenu_page('page_validator', 'Settings', 'Settings', 'manage_options', 'page_validator_settings', 'show_page_validator_settings');
 }
+
+
+function request_image($request) {
+    $body = $request->get_body();
+    $params = json_decode($body, true);
+    $data_url = isset($params['data_url']) ? $params['data_url'] : null;
+
+    if ($data_url) {
+        $task_id = uniqid();
+        
+        // Lancez le téléchargement de l'image ici (peut-être de manière asynchrone)
+        // Vous pouvez utiliser wp_schedule_single_event pour exécuter download_image de manière asynchrone
+        wp_schedule_single_event(time(), 'download_image_event', array('task_id' => $task_id, 'data_url' => $data_url));
+        
+        // Mettez à jour le statut de la tâche
+        update_option('image_status_' . $task_id, 'pending');
+
+        return new WP_REST_Response(['task_id' => $task_id], 200);
+    } else {
+        return new WP_REST_Response(['error' => 'data_url is missing'], 400);
+    }
+}
+
+
+// Ajoutez cette action pour gérer l'événement planifié
+add_action('download_image_event', 'download_image', 10, 2);
+
+function download_image($task_id, $data_url) {
+    // Utilisez wp_remote_get pour télécharger l'image
+    $response = wp_remote_get($data_url);
+    if (is_wp_error($response)) {
+        // Gérer l'erreur
+        update_option('image_status_' . $task_id, 'failed');
+    } else {
+        $image_data = wp_remote_retrieve_body($response);
+        $upload = wp_upload_bits('screenshot_' . $task_id . '.png', null, $image_data);
+        if (!$upload['error']) {
+            $file_path = $upload['file'];
+            $file_name = basename($file_path);
+            $file_type = wp_check_filetype($file_name, null);
+            $attachment = array(
+                'post_mime_type' => $file_type['type'],
+                'post_title' => sanitize_file_name($file_name),
+                'post_content' => '',
+                'post_status' => 'inherit'
+            );
+
+            $attachment_id = wp_insert_attachment($attachment, $file_path);
+            require_once(ABSPATH . 'wp-admin/includes/image.php');
+            $attachment_data = wp_generate_attachment_metadata($attachment_id, $file_path);
+            wp_update_attachment_metadata($attachment_id, $attachment_data);
+
+            // Mettez à jour le statut de la tâche
+            update_option('image_status_' . $task_id, 'completed');
+            update_option('image_attachment_id_' . $task_id, $attachment_id);
+        } else {
+            update_option('image_status_' . $task_id, 'failed');
+        }
+    }
+}
+
+function check_image($request) {
+    $task_id = $request['task_id'];
+    $status = get_option('image_status_' . $task_id, 'pending');
+
+    // Vérifiez l'état du téléchargement ici
+    if ($status === 'completed') {
+        $attachment_id = get_option('image_attachment_id_' . $task_id);
+        $image_url = wp_get_attachment_url($attachment_id);
+        return new WP_REST_Response(['status' => 'completed', 'image_url' => $image_url], 200);
+    } else {
+        return new WP_REST_Response(['status' => $status], 200);
+    }
+}
+
+add_action('rest_api_init', function () {
+    register_rest_route('epvp/v1', '/request-image/', array(
+        'methods' => 'POST',
+        'callback' => 'request_image',
+    ));
+});
+
+
+add_action('rest_api_init', function () {
+    register_rest_route('epvp/v1', '/check-image/(?P<task_id>\w+)', array(
+        'methods' => 'GET',
+        'callback' => 'check_image',
+    ));
+});
+
+
+
 
 function find_first_title($element) {
     if (isset($element['elements']) && is_array($element['elements'])) {
@@ -121,6 +214,11 @@ function show_page_validator_settings() {
         } else {
             update_option('force_update', 'false');
         }
+
+        if (isset($_POST['default_screenshot_url'])) {
+            update_option('default_screenshot_url', sanitize_text_field($_POST['default_screenshot_url']));
+        }
+        
         
     }
 
@@ -131,6 +229,7 @@ function show_page_validator_settings() {
     $password = get_option('snapshot_password', '');
     $mock_snapshot = get_option('mock_snapshot', 'false');
     $force_update = get_option('force_update', 'false');
+    $default_screenshot_url = get_option('default_screenshot_url', DEFAULT_SCREENSHOT_URL);
 
     echo '<div class="wrap">';
     echo '<h1>Settings</h1>';
@@ -153,6 +252,11 @@ function show_page_validator_settings() {
     echo '<div id="snapshotFields"">';
     echo '<input type="checkbox" id="mock_snapshot" name="mock_snapshot" ' . ($mock_snapshot === 'true' ? 'checked' : '') . '>';
     echo '<label for="mock_snapshot">Mock snapshot</label></>';
+    echo '</div>';
+
+    echo '<div id="snapshotUrlFields"">';
+    echo '<label for="default_screenshot_url">Default snapchot URL : </label>';
+    echo '<input type="text" size="50" id="default_screenshot_url" name="default_screenshot_url" value="' . esc_attr($default_screenshot_url) . '"><br><br>';
     echo '</div>';
     echo '<br>';
     echo '<div id="forceUpdate"">';
@@ -286,13 +390,8 @@ function build_screenshot_link($page_url, $css_id, $fullpage = false) {
     
 }
 
-function build_screenshot_url_not_found() {
-    
-    $default_screenshot_url = 'https://placehold.co/400';
-}
-
 function buildScreenshotUrlFromMock($page_id, $section_id = null) {
-    $default_screenshot_url = 'https://placehold.co/400';
+    $default_screenshot_url = DEFAULT_SCREENSHOT_URL;
     if ($section_id) {
         error_log("Use fake section screenshot");
         return $default_screenshot_url . '?text=Section+' . $section_id;
@@ -371,32 +470,6 @@ function buildScreenshotUrlFromAPI($page_id, $section_id = null) {
         return wp_get_attachment_url($existing_attachment_id);
     }
 }
-
-// function getScreenshot($page_id, $section_id = null) {
-//     error_log("getScreenshot (page_id: $page_id , section_id: $section_id )");
-    
-//     $screenshot_url = MOCK_SNAPSHOT ? buildScreenshotUrlFromMock($page_id, $section_id) : buildScreenshotUrlFromAPI($page_id, $section_id);
-
-    
-    
-//     // echo '<script>
-//     //         jQuery(document).ready(function($) {
-//     //             $.ajax({
-//     //                 url: "' . $screenshot_url . '",
-//     //                 type: "GET",
-//     //                 success: function(data) {
-//     //                     // Mettez à jour l\'URL de l\'image ici
-//     //                     $("#screenshot-' . $screenshot_id . '").attr("src", data.url);
-//     //                 },
-//     //                 error: function(error) {
-//     //                     console.log("Erreur lors de la récupération de l\'image : ", error);
-//     //                 }
-//     //             });
-//     //         });
-//     //     </script>';
-
-//     return $screenshot_url;
-// }
 
 function getElementId($element) {
     if (isset($element['settings']['_element_id'])) {
