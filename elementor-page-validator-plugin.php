@@ -6,6 +6,7 @@
  * Author: Thomas Couderc
  */
 
+
  // website url
 define ('WEBSITE_URL', get_site_url());
 error_log("WEBSITE_URL : " . WEBSITE_URL);
@@ -42,10 +43,16 @@ if (!get_option('force_update')) {
 define('FORCE_UPDATE', get_option('force_update') === 'true');
 error_log("FORCE_UPDATE MODE : " . var_export(FORCE_UPDATE, true)); 
 
-define('SCREENSHOT_TMP_IMAGE', plugins_url('elementor-page-validator-plugin/assets/screenshot_tmp.svg'));
+define('SCREENSHOT_TMP_IMAGE', plugins_url('elementor-page-validator-plugin/assets/images/screenshot_tmp.svg'));
 
 // Add menu and submenu in admin panel
 add_action('admin_menu', 'add_menu_and_submenu_page_validator');
+
+function enqueue_screenshots_script() {
+    wp_enqueue_script('screenshots', plugin_dir_url(__FILE__) . 'assets/js/screenshots.js', array('jquery'), '1.0', true);
+}
+add_action('admin_enqueue_scripts', 'enqueue_screenshots_script');
+
 
 function add_menu_and_submenu_page_validator() {
     add_menu_page('Page validator', 'Page validator', 'manage_options', 'page_validator', 'show_page_validator_plugin');
@@ -517,30 +524,5 @@ function show_page_validator_plugin() {
     echo '<input type="submit" value="Valider les éléments sélectionnés">';
     echo '</form>';
     echo '</div>';
-    echo '<script>
-    jQuery(document).ready(function($) {
-        $("input[name=\'valider[]\']").change(function() {
-            var parentChecked = $(this).prop("checked");
-            var parentId = $(this).val();
-            $("tr[data-id^=\'" + parentId + "-\']").find("input[type=\'checkbox\']").prop("checked", parentChecked);
-        });
-    });
-    jQuery(document).ready(function($) {
-        $("img[id^=\'screenshot-\']").each(function() {
-            var screenshotUrl = $(this).data("url");
-            var imgElement = $(this);
-            $.ajax({
-                url: screenshotUrl,
-                type: "GET",
-                success: function(data) {
-                    imgElement.attr("src", data.url);
-                },
-                error: function(error) {
-                    console.log("Erreur lors de la récupération de l\'image : ", error);
-                }
-            });
-        });
-    });
-    </script>';
 }
 ?>
