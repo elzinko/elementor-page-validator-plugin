@@ -6,40 +6,65 @@
  * Author: Thomas Couderc
  */
 
-
-// Initialize or get snapshot_api from WordPress options
-if (!get_option('snapshot_api')) {
-    add_option('snapshot_api', 'https://webshot-elzinko.vercel.app/api/webshot');
-}
-define ('SNAPSHOT_API', get_option('snapshot_api'));
-
+ // website url
 define ('WEBSITE_URL', get_site_url());
+error_log("WEBSITE_URL : " . WEBSITE_URL);
+
+// snapshot api url
+define ('SNAPSHOT_API_DEFAULT', 'https://webshot-elzinko.vercel.app/api/webshot');
+// if (!get_option('snapshot_api')) {
+//     update_option('snapshot_api', SNAPSHOT_API_DEFAULT);
+// }
+error_log("SNAPSHOT_API URL : " . get_option('snapshot_api', SNAPSHOT_API_DEFAULT));
+
+// debug mode
+define('DEBUG', true);
+error_log("DEBUG MODE: " . DEBUG);
+
+if (!get_option('mock_snapshot')) {
+    update_option('mock_snapshot', 'true');  // Utilisez update_option
+}
+define('MOCK_SNAPSHOT', get_option('mock_snapshot') === 'true');
+error_log("MOCK_SNAPSHOT MODE : " . var_export(MOCK_SNAPSHOT, true));  // Utilisez var_export pour le débogage
+
+
+// default screenshot url
+if (!get_option('default_screenshot_url')) {
+    add_option('default_screenshot_url', 'https://placehold.co/400');
+}
+define('DEFAULT_SCREENSHOT_URL',  get_option('default_screenshot_url'));
+error_log("DEFAULT_SCREENSHOT_URL : " . DEFAULT_SCREENSHOT_URL);
+
+// delete_option('mock_snapshot');
+if (!get_option('force_update')) {
+    update_option('force_update', 'false');  // Utilisez update_option
+}
+define('FORCE_UPDATE', get_option('force_update') === 'true');
+error_log("FORCE_UPDATE MODE : " . var_export(FORCE_UPDATE, true)); 
+
+define('SCREENSHOT_TMP_IMAGE', plugins_url('elementor-page-validator-plugin/assets/screenshot_tmp.svg'));
 
 // Add menu and submenu in admin panel
 add_action('admin_menu', 'add_menu_and_submenu_page_validator');
-
-// define MOCK_SNAPSHOT
-if (!get_option('mock_snapshot')) {
-    add_option('mock_snapshot', 'false');
-}
-define('MOCK_SNAPSHOT', get_option('mock_snapshot'));
-
 
 function add_menu_and_submenu_page_validator() {
     add_menu_page('Page validator', 'Page validator', 'manage_options', 'page_validator', 'show_page_validator_plugin');
     add_submenu_page('page_validator', 'Settings', 'Settings', 'manage_options', 'page_validator_settings', 'show_page_validator_settings');
 }
 
-function find_first_title($elements) {
-    foreach ($elements as $element) {
-        if (isset($element['widgetType']) && ($element['widgetType'] === 'heading' || $element['widgetType'] === 'widget-menu-anchor')) {
-            return isset($element['settings']['title']) ? $element['settings']['title'] : 'Sans titre';
-        }
-        
-        if (isset($element['elements']) && is_array($element['elements'])) {
-            $title = find_first_title($element['elements']);
-            if ($title) {
-                return $title;
+function find_first_title($element) {
+    if (isset($element['elements']) && is_array($element['elements'])) {
+        $elements = $element['elements'];
+        foreach ($elements as $element) {
+            if (isset($element['widgetType']) && ($element['widgetType'] === 'heading' || $element['widgetType'] === 'widget-menu-anchor')) {
+                return isset($element['settings']['title']) ? $element['settings']['title'] : 'Sans titre';
+            }
+            
+            if (isset($element['elements']) && is_array($element['elements'])) {
+                $title = find_first_title($element['elements']);
+                if ($title) {
+                    return $title;
+                }
             }
         }
     }
@@ -48,9 +73,7 @@ function find_first_title($elements) {
 
 
 function build_test_link() {
-    
     $test_link = WEBSITE_URL;
-
     $use_auth = get_option('use_auth', 'false');
     if ($use_auth === 'true') {
         $username = get_option('snapshot_username', '');
@@ -60,7 +83,6 @@ function build_test_link() {
         }
     }
     return $test_link;
-    
 }
 
 function show_page_validator_settings() {
@@ -70,9 +92,7 @@ function show_page_validator_settings() {
             update_option('snapshot_api', sanitize_text_field($_POST['snapshot_api']));
         }
         if (isset($_POST['use_auth'])) {
-            update_option('use_auth', 'true');
-        } else {
-            update_option('use_auth', 'false');
+            update_option('use_auth', $_POST['use_auth']);
         }
         if (isset($_POST['username'])) {
             update_option('snapshot_username', sanitize_text_field($_POST['username']));
@@ -81,26 +101,36 @@ function show_page_validator_settings() {
             update_option('snapshot_password', sanitize_text_field($_POST['password']));
         }
         if (isset($_POST['mock_snapshot'])) {
-            update_option('mock_snapshot', 'true');
+            $mock_snapshot_value = $_POST['mock_snapshot'] === 'on' ? 'true' : 'false';
+            update_option('mock_snapshot', $mock_snapshot_value);
+            if ($mock_snapshot_value === 'true') {
+                update_option('force_update', 'false'); // Réinitialiser force_update à false
+            }
         } else {
             update_option('mock_snapshot', 'false');
+        }        
+        if (isset($_POST['force_update'])) {
+            update_option('force_update', $_POST['force_update'] === 'on' ? 'true' : 'false');
+        } else {
+            update_option('force_update', 'false');
         }
         
     }
 
     // Fetch the snapshot_api and credentials from options
-    $snapshot_api = get_option('snapshot_api', SNAPSHOT_API);
+    $snapshot_api = get_option('snapshot_api', SNAPSHOT_API_DEFAULT);
     $use_auth = get_option('use_auth', 'false');
     $username = get_option('snapshot_username', '');
     $password = get_option('snapshot_password', '');
     $mock_snapshot = get_option('mock_snapshot', 'false');
+    $force_update = get_option('force_update', 'false');
 
     echo '<div class="wrap">';
     echo '<h1>Settings</h1>';
     echo '<form method="post">';
     echo '<label for="snapshot_api">Snapshot API : </label>';
-    echo '<input type="text" size="50" id="snapshot_api" name="snapshot_api" value="' . esc_attr($snapshot_api) . '"><br>';
-    echo '<label for="website_url">Website url : </label>';
+    echo '<input type="text" size="50" id="snapshot_api" name="snapshot_api" value="' . esc_attr($snapshot_api) . '"><br><br>';
+    echo '<label for="website_url">Website URL : </label>';
     echo '<input type="text" id="website_url" name="website_url" value="' . esc_attr(WEBSITE_URL) . '" size="50" readonly><br>';
     echo '<br>';
     echo '<input type="checkbox" id="use_auth" name="use_auth" ' . ($use_auth === 'true' ? 'checked' : '') . '>';
@@ -108,14 +138,19 @@ function show_page_validator_settings() {
     echo '<br>';
     echo '<div id="authFields" style="display:none;">';
     echo '<label for="username">Username: </label>';
-    echo '<input type="text" id="username" name="username" value="' . esc_attr($username) . '"><br>';
+    echo '<input type="text" id="username" name="username" value="' . esc_attr($username) . '"><br><br>';
     echo '<label for="password">Password: </label>';
-    echo '<input type="password" id="password" name="password" value="' . esc_attr($password) . '"><br>';
+    echo '<input type="password" id="password" name="password" value="' . esc_attr($password) . '"><br><br>';
     echo '</div>';
     echo '<br>';
     echo '<div id="snapshotFields"">';
     echo '<input type="checkbox" id="mock_snapshot" name="mock_snapshot" ' . ($mock_snapshot === 'true' ? 'checked' : '') . '>';
-    echo '<label for="mock_snapshot">Mock snapshot: </label></>';
+    echo '<label for="mock_snapshot">Mock snapshot</label></>';
+    echo '</div>';
+    echo '<br>';
+    echo '<div id="forceUpdate"">';
+    echo '<input type="checkbox" id="force_update" name="force_update" ' . ($force_update === 'true' ? 'checked' : '') . '>';
+    echo '<label for="force_update">Force Update</label></>';
     echo '</div>';
     echo '<br>';
     echo '<label id="testLinkLabel">Test Link : ' . build_test_link() . '</label>';
@@ -169,6 +204,23 @@ jQuery(document).ready(function($) {
     // Update on change
     $("#username, #password, #use_auth").change(function() {
         updateTestLink();
+    });
+
+    function toggleForceUpdate() {
+        if ($("#mock_snapshot").prop("checked")) {
+            $("#forceUpdate").hide();
+            $("#force_update").prop("checked", false); // Réinitialiser force_update à false
+        } else {
+            $("#forceUpdate").show();
+        }
+    }
+
+    // Initial state
+    toggleForceUpdate();
+
+    // Toggle on change
+    $("#mock_snapshot").change(function() {
+        toggleForceUpdate();
     });
 });
 </script>';
@@ -227,6 +279,131 @@ function build_screenshot_link($page_url, $css_id, $fullpage = false) {
     
 }
 
+function build_screenshot_url_not_found() {
+    
+    $default_screenshot_url = 'https://placehold.co/400';
+}
+
+function buildScreenshotUrlFromMock($page_id, $section_id = null) {
+    $default_screenshot_url = 'https://placehold.co/400';
+    if ($section_id) {
+        error_log("Use fake section screenshot");
+        return $default_screenshot_url . '?text=Section+' . $section_id;
+    } else {
+        error_log("Use fake page screenshot");
+        return $default_screenshot_url . '?text=Page+' . $page_id;
+    }
+}
+
+function build_api_call_url($page_id, $section_id = null) {
+    $snapshot_api = get_option('snapshot_api', SNAPSHOT_API_DEFAULT);
+    $page_url = get_permalink($page_id);
+    $target_url = $section_id? build_screenshot_link($page_url, $section_id) : build_screenshot_link($page_url, null, true);
+    $screenshot_url = $snapshot_api .'?url=' . $target_url;
+    return $screenshot_url;
+}
+
+function buildMetaKey($page_id, $section_id = null) {
+    return $section_id ? $page_id . '_' . $section_id : $page_id;
+}
+
+function buildScreenshotUrlFromAPI($page_id, $section_id = null) {
+    // Clé de métadonnées pour stocker l'ID de l'attachement
+    $meta_key = buildMetaKey($page_id, $section_id);
+
+    // Vérifier si l'image existe déjà en base
+    $existing_attachment_id = get_post_meta($page_id, $meta_key, true);
+
+    // Si l'image existe déjà ou que nous sommes en mode forcé de rafrachissement, on régénère l'url de l'image
+    if (!$existing_attachment_id || (FORCE_UPDATE)) {
+        
+        // $page_url = get_permalink($page_id);
+        // $target_url = $section_id? build_screenshot_link($page_url, $section_id, true) : build_screenshot_link($page_url, $section_id);
+        $screenshot_url = build_api_call_url($page_id, $section_id);
+
+        return $screenshot_url;
+
+        // $response = wp_remote_get($screenshot_url);
+        // if (is_wp_error($response)) {
+        //     error_log("Erreur lors du téléchargement de l'image : " . $response->get_error_message());
+        //     return DEFAULT_SCREENSHOT_URL . '?text=NOT+FOUND';
+        // } else {
+        //     $image_data = wp_remote_retrieve_body($response);
+        //     $upload = wp_upload_bits('screenshot.jpg', null, $image_data);
+        //     if (!$upload['error']) {
+        //         $file_path = $upload['file'];
+        //         $file_name = basename($file_path);
+        //         $file_type = wp_check_filetype($file_name, null);
+        //         $attachment = array(
+        //             'post_mime_type' => $file_type['type'],
+        //             'post_title' => sanitize_file_name($file_name),
+        //             'post_content' => '',
+        //             'post_status' => 'inherit'
+        //         );
+
+        //         // Si l'attachement existe déjà et que nous sommes en mode FORCE_UPDATE, supprimer l'ancien attachement
+                if ($existing_attachment_id) {
+                    wp_delete_attachment($existing_attachment_id, true);
+                }
+
+        //         $screenshot_id = wp_insert_attachment($attachment, $file_path, $page_id);
+        //         require_once(ABSPATH . 'wp-admin/includes/image.php');
+        //         $attachment_data = wp_generate_attachment_metadata($screenshot_id, $file_path);
+        //         wp_update_attachment_metadata($screenshot_id, $attachment_data);
+        //         update_post_meta($page_id, $meta_key, $screenshot_id);
+        //         error_log("Image téléchargée et attachée avec succès. ID de l'attachement : " . $screenshot_id);
+
+        //         // Retourner l'URL de l'attachement
+        //         return wp_get_attachment_url($screenshot_id);
+        //     }
+        //     error_log("Erreur lors de l'upload de l'image : " . $upload['error']);
+        //     return DEFAULT_SCREENSHOT_URL;
+        // }
+    } else {
+        // Si l'image existe déjà et que nous ne sommes pas en mode FORCE_UPDATE, retourner l'URL de l'attachement existant
+        return wp_get_attachment_url($existing_attachment_id);
+    }
+}
+
+// function getScreenshot($page_id, $section_id = null) {
+//     error_log("getScreenshot (page_id: $page_id , section_id: $section_id )");
+    
+//     $screenshot_url = MOCK_SNAPSHOT ? buildScreenshotUrlFromMock($page_id, $section_id) : buildScreenshotUrlFromAPI($page_id, $section_id);
+
+    
+    
+//     // echo '<script>
+//     //         jQuery(document).ready(function($) {
+//     //             $.ajax({
+//     //                 url: "' . $screenshot_url . '",
+//     //                 type: "GET",
+//     //                 success: function(data) {
+//     //                     // Mettez à jour l\'URL de l\'image ici
+//     //                     $("#screenshot-' . $screenshot_id . '").attr("src", data.url);
+//     //                 },
+//     //                 error: function(error) {
+//     //                     console.log("Erreur lors de la récupération de l\'image : ", error);
+//     //                 }
+//     //             });
+//     //         });
+//     //     </script>';
+
+//     return $screenshot_url;
+// }
+
+function getElementId($element) {
+    if (isset($element['settings']['_element_id'])) {
+        return $element['settings']['_element_id'];
+    }
+    if (isset($element['settings']['_id'])) {
+        return $element['settings']['_id'];
+    }
+    if (isset($element['id'])) {
+        return $element['id'];
+    }
+    return null;
+}
+
 
 function show_page_validator_plugin() {
     
@@ -258,7 +435,15 @@ function show_page_validator_plugin() {
     echo '<h1>Validation des éléments Elementor</h1>';
     echo '<form method="post">';
     echo '<table class="wp-list-table widefat fixed striped">';
-    echo '<thead><tr><th scope="col">ID</th><th scope="col">Valider</th><th scope="col">Fil d\'Ariane</th><th scope="col">Aperçu</th></tr></thead>';
+    echo '<thead>
+        <tr>
+            <th scope="col">ID</th>
+            <th scope="col">CSS ID</th>
+            <th scope="col">Valider</th>
+            <th scope="col">Fil d\'Ariane</th>
+            <th scope="col">Aperçu</th>
+        </tr>
+    </thead>';
     echo '<tbody>';
 
     $getSnapshot = true;
@@ -268,25 +453,22 @@ function show_page_validator_plugin() {
 
             $query->the_post();
             $page_id = get_the_ID();
-            $page_url = get_permalink($page_id);
             $titre_page = get_the_title();
-            // Create an anchor link to page
             $section_link = build_section_link($page_id, null);
+
+            $screenshot_page_id = buildMetaKey($page_id);
+            error_log("get page screenshot : $screenshot_page_id)");
+            $screenshot_page_url = MOCK_SNAPSHOT ? buildScreenshotUrlFromMock($page_id) : buildScreenshotUrlFromAPI($page_id);
+            error_log("screenshot_page_url : " . $screenshot_page_url);
 
             // Display row for the page
             echo '<tr data-id="' . $page_id . '">';
             echo '<td>' . $page_id . '</td>';
+            echo '<td>NaN</td>';
             echo '<td><input type="checkbox" name="valider[]" value="' . $page_id . '"></td>';
             echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . '</a></td>';
-            if (MOCK_SNAPSHOT === 'true') {
-                if ($getSnapshot) {
-                    echo '<td><img src="' . SNAPSHOT_API .'?url=' . build_screenshot_link($page_url, null, true) . '" width="100"></td>';
-                } else {
-                    echo '<td><img src="https://picsum.photos/200" width="100"></td>';
-                }
-            } else {
-                echo '<td><img src="' . SNAPSHOT_API .'?url=' . build_screenshot_link($page_url, null, true) . '" width="100"></td>';
-            }
+            echo '<td><img id="screenshot-' . $screenshot_page_id .'" data-url="' . $screenshot_page_url . '" src="' . esc_url(SCREENSHOT_TMP_IMAGE) . '" width="100"></td>';
+            // echo '<td><img id="screenshot-' . $screenshot_page_id .'"src="' . esc_url(SCREENSHOT_TMP_IMAGE) . '" width="100"></td>';
             echo '</tr>';
 
 
@@ -298,45 +480,31 @@ function show_page_validator_plugin() {
             if (is_array($elementor_data)) {
                 foreach ($elementor_data as $element) {
                     if (isset($element['elType']) && 'section' === $element['elType']) {
-                        $section_title = 'Section sans titre';
-                        // get css id of element
-                        $css_id = isset($element['settings']['_element_id']) ? $element['settings']['_element_id'] : null;  
-                        
-                        // Create an anchor link to the section
-                        if ($css_id) {
-                            $section_link = build_section_link($page_id, $css_id);
-                        }
+                        $id = $element['id'];
+                        $css_id = getElementId($element)? getElementId($element) : 'x';  
+                        $section_id = $css_id? $css_id : $id;
+                        $section_link = $css_id? build_section_link($page_id, $css_id) : $section_link;
+                        $firstTitle = find_first_title($element);
+                        $section_title = $firstTitle ? $firstTitle : 'Section sans titre';
 
-                        // Check if the section contains elements
-                         if (isset($element['elements']) && is_array($element['elements'])) {
-                            $title = find_first_title($element['elements']);
-                            if ($title) {
-                                $section_title = $title;
-                            }
-                        }
-
-                        $css_name = $css_id? $css_id : 'x';
+                        $screenshot_section_id = buildMetaKey($page_id, $element['id']);
+                        error_log("screenshot_section_id : " . $screenshot_section_id);
+                        $screenshot_section_url = MOCK_SNAPSHOT ? buildScreenshotUrlFromMock($page_id, $section_id) : buildScreenshotUrlFromAPI($page_id, $section_id);
+                        error_log("screenshot_section_url : " . $screenshot_section_url);
 
                         // Display row for the section
                         echo '<tr data-id="' . $page_id . '-' . $element['id'] . '">';
-                        echo '<td>' . $css_name . '</td>';
+                        echo '<td>' . $section_id . '</td>';
+                        echo '<td>' . $css_id . '</td>';
                         echo '<td><input type="checkbox" name="valider_section[]" value="' . $element['id'] . '"></td>';
                         if ($css_id) {
                             echo '<td><a href="' . $section_link . '" target = "_ blank">' . $titre_page . ' > ' . $section_title . '</a></td>';
                         } else {
                             echo '<td>' . $titre_page . ' > ' . $section_title . '</td>';
                         }
+                        echo '<td><img id="screenshot-' . $screenshot_section_id .'" data-url="' . $screenshot_section_url . '" src="' . esc_url(SCREENSHOT_TMP_IMAGE) . '" width="100"></td>';
 
-                        if (MOCK_SNAPSHOT === 'true') {
-                            if ($getSnapshot && $css_id) {
-                                echo '<td><img src="' . SNAPSHOT_API .'?url=' . build_screenshot_link($page_url, $css_id) . '" width="100"></td>';
-                                $getSnapshot = false;
-                            } else {
-                                echo '<td><img src="https://picsum.photos/200" width="100"></td>';
-                            }
-                        } else {
-                            echo '<td><img src="' . SNAPSHOT_API .'?url=' . build_screenshot_link($page_url, $css_id) . '" width="100"></td>';
-                        }
+                        // echo '<td><img id="screenshot-' . $screenshot_section_id .'" width="100"></td>';
                         echo '</tr>';
                     }
                 }
@@ -355,6 +523,22 @@ function show_page_validator_plugin() {
             var parentChecked = $(this).prop("checked");
             var parentId = $(this).val();
             $("tr[data-id^=\'" + parentId + "-\']").find("input[type=\'checkbox\']").prop("checked", parentChecked);
+        });
+    });
+    jQuery(document).ready(function($) {
+        $("img[id^=\'screenshot-\']").each(function() {
+            var screenshotUrl = $(this).data("url");
+            var imgElement = $(this);
+            $.ajax({
+                url: screenshotUrl,
+                type: "GET",
+                success: function(data) {
+                    imgElement.attr("src", data.url);
+                },
+                error: function(error) {
+                    console.log("Erreur lors de la récupération de l\'image : ", error);
+                }
+            });
         });
     });
     </script>';
