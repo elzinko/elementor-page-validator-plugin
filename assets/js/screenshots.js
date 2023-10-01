@@ -14,7 +14,7 @@ jQuery(document).ready(function($) {
             url: screenshotUrl,
             type: "GET",
             success: function(data) {
-                imgElement.attr("src", data.url);
+                imgElement.attr("src", data.URL);
             },
             error: function(error) {
                 console.log("Erreur lors de la récupération de l\'image : ", error);
