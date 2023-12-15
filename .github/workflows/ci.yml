@@ -66,13 +66,13 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Download Package
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: elementor-page-validator-plugin
           path: ./elementor-page-validator-plugin.zip
 
       - name: Download Package
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: changelog
           path: ./CHANGELOG.md
