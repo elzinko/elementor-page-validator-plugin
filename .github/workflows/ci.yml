@@ -40,13 +40,13 @@ jobs:
           npm run bundle
 
       - name: Upload Package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: elementor-page-validator-plugin
           path: ./dist/*.zip
 
       - name: Upload Changelog
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: changelog
           path: CHANGELOG.md
